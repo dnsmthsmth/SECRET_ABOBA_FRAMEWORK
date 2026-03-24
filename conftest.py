@@ -16,6 +16,52 @@ faker = Faker()
 load_dotenv()
 
 
+@pytest.fixture(scope="session")
+def requester():
+    """
+    Фикстура для создания экземпляра CustomRequester.
+    """
+    session = requests.Session()
+    return CustomRequester(session=session, base_url=BASE_URL)
+
+
+@pytest.fixture(scope="session")
+def session():
+    """
+    Фикстура для создания HTTP-сессии.
+    """
+    http_session = requests.Session()
+    yield http_session
+    http_session.close()
+
+
+@pytest.fixture(scope="session")
+def unauthenticated_session():
+    """
+    Фикстура для создания неаутентифицированной сессии.
+    """
+    http_session = requests.Session()
+    yield http_session
+    http_session.close()
+
+
+@pytest.fixture(scope="session")
+def super_admin_session(api_manager):
+    """
+    Фикстура для создания супер-админ сессии.
+    """
+    api_manager.auth_api.super_admin_authenticate()
+    return api_manager.session
+
+
+@pytest.fixture(scope="session")
+def api_manager(session):
+    """
+    Фикстура для создания экземпляра ApiManager.
+    """
+    return ApiManager(session)
+
+
 @pytest.fixture(scope="function")
 def test_film(genre_ids):
     """
@@ -71,52 +117,6 @@ def wrong_key():
     return {
         fake_key: faker.word()
     }
-
-
-@pytest.fixture(scope="session")
-def requester():
-    """
-    Фикстура для создания экземпляра CustomRequester.
-    """
-    session = requests.Session()
-    return CustomRequester(session=session, base_url=BASE_URL)
-
-
-@pytest.fixture(scope="session")
-def session():
-    """
-    Фикстура для создания HTTP-сессии.
-    """
-    http_session = requests.Session()
-    yield http_session
-    http_session.close()
-
-
-@pytest.fixture(scope="session")
-def unauthenticated_session():
-    """
-    Фикстура для создания неаутентифицированной сессии.
-    """
-    http_session = requests.Session()
-    yield http_session
-    http_session.close()
-
-
-@pytest.fixture(scope="session")
-def super_admin_session(api_manager):
-    """
-    Фикстура для создания супер-админ сессии.
-    """
-    api_manager.auth_api.super_admin_authenticate()
-    return api_manager.session
-
-
-@pytest.fixture(scope="session")
-def api_manager(session):
-    """
-    Фикстура для создания экземпляра ApiManager.
-    """
-    return ApiManager(session)
 
 
 @pytest.fixture(scope="session")

@@ -126,6 +126,56 @@ class TestMoviesAdminPositive:
             'Нет поля "pageCount" в теле ответа'
         )
 
+    def test_get_films_filtered(
+            self,
+            api_manager,
+            generate_get_filters,
+            super_admin_session
+    ):
+        """
+        Тест на общий get-запрос для фильмов со случайными фильтрами
+        """
+        params = generate_get_filters
+        response = api_manager.movies_api.get_movies(
+            params=params,
+            expected_status=200
+        )
+        response_data = response.json()
+
+        assert 'movies' in response_data, 'Нет объекта movies в теле ответа'
+        assert len(response_data.get('movies')) == params['pageSize'], (
+            f'Ожидаемое количество фильмов в базовом GET: {params['pageSize']}'
+            f'\n Получено: {len(response_data.get('movies'))}'
+        )
+        assert 'count' in response_data, 'Нет поля "count" в теле ответа'
+        assert response_data['page'] == params['page'], (
+            'Страница ответа отличается от указанной в фильтре'
+        )
+        assert response_data['pageSize'] == params['pageSize'], (
+            'Размер страницы ответа отличается от указанной в фильтре'
+        )
+        for film in response_data.get('movies'):
+            assert BASE_RESPONSE_MOVIE.issubset(film.keys()), (
+                f'GET-запрос. Неверный набор ключей в отображаемых фильмах. \n'
+                f'Ожидаемый: {EXPECTED_MOVIE_GET_KEYS} \n'
+                f'Полученный: {film.keys()}'
+            )
+            assert params['minPrice'] <= film['price'] <= params['maxPrice'], (
+                'Цена фильма отличается от заданной в фильтрах'
+            )
+            assert params['locations'] == film['location'], (
+                'Город фильма отличается от заданного в фильтрах'
+            )
+
+            # Для сравнивания bool значений, а не 'true' == True
+            expected_published = params['published'] == 'true'
+            assert expected_published == film['published'], (
+                'Статус публикации отличается от заданного в фильтрах'
+            )
+            assert params['genreId'] == film['genreId'], (
+                'Жанр фильма отличается от заданного в фильтрах'
+            )
+
     def test_delete_movie(self, api_manager, add_movie, super_admin_session):
         """
         Тест на создание и удаление фильма супер-админом.
@@ -212,58 +262,45 @@ class TestMoviesAdminPositive:
             f'Фактическое значение: {response_data[field2]}'
         )
 
-    def test_get_films_filtered(
-            self,
-            api_manager,
-            generate_get_filters,
-            super_admin_session
-    ):
+
+class TestMoviesAdminNegative:
+    def test_get_wrong_id_film(self, api_manager, super_admin_session):
         """
-        Тест на общий get-запрос для фильмов со случайными фильтрами
+        Тест на GET-запрос фильма с несуществующим id.
         """
-        params = generate_get_filters
-        response = api_manager.movies_api.get_movies(
-            params=params,
-            expected_status=200
+        wrong_movie_id = 999999999
+        response = api_manager.movies_api.get_movie_by_id(
+            movie_id=wrong_movie_id,
+            expected_status=404
         )
         response_data = response.json()
 
-        assert 'movies' in response_data, 'Нет объекта movies в теле ответа'
-        assert len(response_data.get('movies')) == params['pageSize'], (
-            f'Ожидаемое количество фильмов в базовом GET: {params['pageSize']}'
-            f'\n Получено: {len(response_data.get('movies'))}'
-        )
-        assert 'count' in response_data, 'Нет поля "count" в теле ответа'
-        assert response_data['page'] == params['page'], (
-            'Страница ответа отличается от указанной в фильтре'
-        )
-        assert response_data['pageSize'] == params['pageSize'], (
-            'Размер страницы ответа отличается от указанной в фильтре'
-        )
-        for film in response_data.get('movies'):
-            assert BASE_RESPONSE_MOVIE.issubset(film.keys()), (
-                f'GET-запрос. Неверный набор ключей в отображаемых фильмах. \n'
-                f'Ожидаемый: {EXPECTED_MOVIE_GET_KEYS} \n'
-                f'Полученный: {film.keys()}'
-            )
-            assert params['minPrice'] <= film['price'] <= params['maxPrice'], (
-                'Цена фильма отличается от заданной в фильтрах'
-            )
-            assert params['locations'] == film['location'], (
-                'Город фильма отличается от заданного в фильтрах'
-            )
+        assert "message" in response_data, 'Нет поля "message" в теле ответа'
+        assert response_data.get('message') == 'Фильм не найден', (
+            f'Ожидаемое сообщение: Фильм не найден \n'
+            f'Полученное сообщение: {response_data.get('message')}')
 
-            # Для сравнивания bool значений, а не 'true' == True
-            expected_published = params['published'] == 'true'
-            assert expected_published == film['published'], (
-                'Статус публикации отличается от заданного в фильтрах'
-            )
-            assert params['genreId'] == film['genreId'], (
-                'Жанр фильма отличается от заданного в фильтрах'
-            )
+    def test_get_movies_wrong_filters(
+            self,
+            api_manager,
+            generate_get_filters
+    ):
+        """
+        Тест на общий get-запрос для фильмов с хардкод ошибками в фильтрах
+        """
+        params = generate_get_filters
+        params['maxPrice'] = -1
+        params['locations'] = 'Paris'
+        response = api_manager.movies_api.get_movies(
+            params=params,
+            expected_status=400
+        )
+        response_data = response.json()
 
+        assert 'message' in response_data, (
+            'Нет сообщения с информаций об ошибке '
+        )
 
-class TestMoviesAdminNegative:
     def test_add_movie_with_wrong_field(
             self,
             api_manager,
@@ -338,22 +375,6 @@ class TestMoviesAdminNegative:
             f'Ожидаемая ошибка: "Conflict" \n'
             f'Полученное: {response_data.get('error')}'
         )
-
-    def test_get_wrong_id_film(self, api_manager, super_admin_session):
-        """
-        Тест на GET-запрос фильма с несуществующим id.
-        """
-        wrong_movie_id = 999999999
-        response = api_manager.movies_api.get_movie_by_id(
-            movie_id=wrong_movie_id,
-            expected_status=404
-        )
-        response_data = response.json()
-
-        assert "message" in response_data, 'Нет поля "message" в теле ответа'
-        assert response_data.get('message') == 'Фильм не найден', (
-            f'Ожидаемое сообщение: Фильм не найден \n'
-            f'Полученное сообщение: {response_data.get('message')}')
 
     def test_delete_wrong_id(self, api_manager, super_admin_session):
         """
@@ -444,25 +465,4 @@ class TestMoviesAdminNegative:
         )
         assert "message" in response_data, (
             "Нет сообщения с информацией об ошибке в поле"
-        )
-
-    def test_get_movies_wrong_filters(
-            self,
-            api_manager,
-            generate_get_filters
-    ):
-        """
-        Тест на общий get-запрос для фильмов с хардкод ошибками в фильтрах
-        """
-        params = generate_get_filters
-        params['maxPrice'] = -1
-        params['locations'] = 'Paris'
-        response = api_manager.movies_api.get_movies(
-            params=params,
-            expected_status=400
-        )
-        response_data = response.json()
-
-        assert 'message' in response_data, (
-            'Нет сообщения с информаций об ошибке '
         )

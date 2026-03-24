@@ -1,0 +1,6 @@
+TO_DO
+main.py
+/venv/
+__pycache__/
+.env
+.flake8

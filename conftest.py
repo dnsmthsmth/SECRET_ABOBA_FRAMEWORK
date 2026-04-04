@@ -1,22 +1,30 @@
 import copy
+import datetime
+import os
 import random
 
 import pytest
 import requests
 from dotenv import load_dotenv
 from faker import Faker
+from sqlalchemy.orm import Session
 
 from api.api_manager import ApiManager
 from constants import (BASE_RESPONSE_MOVIE, BASE_URL, FILM_KEYS_MUTATIONS,
-                       GENRES_ENDPOINT, PATCH_VALUES)
+                       GENRES_ENDPOINT, PATCH_VALUES, TEST_IMAGE_PLACEHOLDER,
+                       Roles)
 from custom_requester.custom_requester import CustomRequester
+from db_requester.db_client import get_db_session
+from db_requester.db_helpers import DBHelper
+from entities.user import User
+from models.pydantic_models import TestUser
 from utils.data_generator import DataGenerator
 
 faker = Faker()
 load_dotenv()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def requester():
     """
     Фикстура для создания экземпляра CustomRequester.
@@ -25,36 +33,7 @@ def requester():
     return CustomRequester(session=session, base_url=BASE_URL)
 
 
-@pytest.fixture(scope="session")
-def session():
-    """
-    Фикстура для создания HTTP-сессии.
-    """
-    http_session = requests.Session()
-    yield http_session
-    http_session.close()
-
-
-@pytest.fixture(scope="session")
-def unauthenticated_session():
-    """
-    Фикстура для создания неаутентифицированной сессии.
-    """
-    http_session = requests.Session()
-    yield http_session
-    http_session.close()
-
-
-@pytest.fixture(scope="session")
-def super_admin_session(api_manager):
-    """
-    Фикстура для создания супер-админ сессии.
-    """
-    api_manager.auth_api.super_admin_authenticate()
-    return api_manager.session
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def api_manager(session):
     """
     Фикстура для создания экземпляра ApiManager.
@@ -62,7 +41,7 @@ def api_manager(session):
     return ApiManager(session)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def test_film(genre_ids):
     """
     Генерация случайного фильма для тестов.
@@ -75,20 +54,20 @@ def test_film(genre_ids):
     random_film_genre_id = DataGenerator.generate_random_genre_id(genre_ids)
 
     # Захардкоженная рабочая ссылка на изображение
-    placeholder_image_url = 'https://picsum.photos/200/300'
+    placeholder_image_url = TEST_IMAGE_PLACEHOLDER
 
     return {
-        "name": random_film_name,
-        "imageUrl": placeholder_image_url,
-        "price": random_film_price,
-        "description": random_description,
-        "location": random_film_location,
-        "published": random_film_published,
-        "genreId": random_film_genre_id
+        'name': random_film_name,
+        'imageUrl': placeholder_image_url,
+        'price': random_film_price,
+        'description': random_description,
+        'location': random_film_location,
+        'published': random_film_published,
+        'genreId': random_film_genre_id
     }
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def test_film_with_errors(test_film):
     """
     Генерация тестового фильма с ошибкой в случайном поле.
@@ -103,7 +82,7 @@ def test_film_with_errors(test_film):
     return mutated
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def wrong_key():
     """
     Генерация случайного поля для негативного теста.
@@ -119,14 +98,14 @@ def wrong_key():
     }
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def genre_ids(requester):
     """
     Получение списка доступных айдишников жанров.
     Необходимо для генерации случайного существующего айдишника.
     """
     response = requester.send_request(
-        method="GET",
+        method='GET',
         endpoint=GENRES_ENDPOINT,
         need_logging=False,
         expected_status=200
@@ -138,7 +117,7 @@ def genre_ids(requester):
     return genres_ids
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def patched_data():
     """
     Фикстура выбирает 2 случайных поля для замены и возвращает
@@ -154,7 +133,7 @@ def patched_data():
     return patched_data
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def add_movie(test_film, api_manager):
     """
     Фикстура создает новый фильм, возвращает тело ответа.
@@ -172,7 +151,35 @@ def add_movie(test_film, api_manager):
     try:
         api_manager.movies_api.delete_movie(movie_id, expected_status=200)
     except Exception as e:
-        print(f"\n Не удалось удалить фильм {movie_id}: {e}")
+        print(f'\n Не удалось удалить фильм {movie_id}: {e}')
+
+
+@pytest.fixture(scope='function')
+def create_movie(super_admin):
+    """
+    Фикстура для создания фильма через API.
+    """
+    created_movies = []
+
+    def _create_movie(user, film_data, expected_status=201):
+        response = user.api.movies_api.add_movie(
+            film_data=film_data,
+            expected_status=expected_status)
+        response_data = response.json()
+        if expected_status == 201:
+            assert 'id' in response_data, (
+                'Нет id созданного фильма в теле ответа')
+            created_movies.append(response_data["id"])
+        return response_data
+
+    yield _create_movie
+
+    for movie_id in created_movies:
+        try:
+            super_admin.api.movies_api.delete_movie(
+                movie_id, expected_status=200)
+        except Exception as e:
+            print(f'\n Не удалось удалить фильм {movie_id}: {e}')
 
 
 @pytest.fixture(scope='function')
@@ -189,12 +196,200 @@ def generate_get_filters(api_manager):
     random_created_at = DataGenerator.chose_created_at()
 
     return {
-        "pageSize": random_page_size,
-        "page": 1,
-        "minPrice": 10,
-        "maxPrice": 500,
-        "locations": random_film_location,
-        "published": random_film_published,
-        "genreId": 1,
-        "createdAt": random_created_at
+        'pageSize': random_page_size,
+        'page': 1,
+        'minPrice': 10,
+        'maxPrice': 500,
+        'locations': random_film_location,
+        'published': random_film_published,
+        'genreId': 1,
+        'createdAt': random_created_at
     }
+
+
+@pytest.fixture(scope='function')
+def test_user() -> TestUser:
+    """
+    Фикстура для генерации данных простого пользователя.
+    """
+    random_password = DataGenerator.generate_random_password()
+
+    return TestUser(
+        email=DataGenerator.generate_random_email(),
+        fullName=DataGenerator.generate_random_name(),
+        password=random_password,
+        passwordRepeat=random_password,
+        roles=[Roles.USER.value]
+    )
+
+
+@pytest.fixture(scope='function')
+def creation_user_data(test_user):
+    """
+    Фикстура для актуализации данных при создании пользователя админом.
+    """
+    return TestUser(
+        email=test_user.email,
+        fullName=test_user.fullName,
+        password=test_user.password,
+        passwordRepeat=test_user.passwordRepeat,
+        roles=test_user.roles,
+        verified=True,
+        banned=False
+    )
+
+
+@pytest.fixture(scope='session')
+def session():
+    """
+    Фикстура для создания HTTP-сессии.
+    """
+    http_session = requests.Session()
+    yield http_session
+    http_session.close()
+
+
+@pytest.fixture(scope='session')
+def user_session():
+    """
+    Фикстура для организации работы сессий различных пользователей.
+    """
+    user_pool = []
+
+    def _create_user_session():
+        session = requests.Session()
+        user_session = ApiManager(session)
+        user_pool.append(user_session)
+        return user_session
+
+    yield _create_user_session
+
+    for user in user_pool:
+        user.close_session()
+
+
+@pytest.fixture(scope='session')
+def unauthenticated_session(user_session):
+    """
+    Фикстура для создания неаутентифицированной сессии.
+    """
+    http_session = user_session()
+    return http_session
+
+
+@pytest.fixture(scope='session')
+def super_admin(user_session):
+    """
+    Фикстура для создания сессии супер-админа.
+    """
+    new_session = user_session()
+
+    super_admin = User(
+        os.getenv('ADMIN_EMAIL'),
+        os.getenv('ADMIN_PASSWORD'),
+        [Roles.SUPER_ADMIN.value],
+        new_session)
+
+    super_admin.api.auth_api.authenticate(super_admin.creds)
+    return super_admin
+
+
+@pytest.fixture
+def common_user(user_session, super_admin, creation_user_data):
+    """
+    Фикстура для создания сессии обычного пользователя.
+    """
+    new_session = user_session()
+
+    common_user = User(
+        creation_user_data.email,
+        creation_user_data.password,
+        [Roles.USER.value],
+        new_session)
+
+    super_admin.api.user_api.create_user(creation_user_data)
+    common_user.api.auth_api.authenticate(common_user.creds)
+    return common_user
+
+
+@pytest.fixture
+def admin(user_session, super_admin, creation_user_data):
+    """
+    Фикстура для создания сессии админа.
+    """
+    new_session = user_session()
+
+    admin = User(
+        creation_user_data.email,
+        creation_user_data.password,
+        [Roles.ADMIN.value],
+        new_session)
+
+    super_admin.api.user_api.create_user(creation_user_data)
+    admin.api.auth_api.authenticate(admin.creds)
+    return admin
+
+
+@pytest.fixture(scope='module')
+def db_session() -> Session:
+    """
+    Фикстура, которая создает и возвращает сессию для работы с базой данных
+    После завершения теста сессия автоматически закрывается
+    """
+    db_session = get_db_session()
+    yield db_session
+    db_session.close()
+
+
+@pytest.fixture(scope='function')
+def db_helper(db_session) -> DBHelper:
+    """
+    Фикстура для экземпляра хелпера
+    """
+    db_helper = DBHelper(db_session)
+    return db_helper
+
+
+@pytest.fixture(scope='function')
+def created_test_user(db_helper):
+    """
+    Фикстура, которая создает тестового пользователя в БД
+    и удаляет его после завершения теста
+    """
+    user = db_helper.create_test_user(DataGenerator.generate_user_data())
+    yield user
+
+    if db_helper.get_user_by_id(user.id):
+        db_helper.delete_user(user)
+
+
+@pytest.fixture(scope='function')
+def test_db_film(test_film):
+    """
+    Изменение ключей словаря тестового фильма
+    для работы с БД, вместо API
+    """
+    test_film['image_url'] = test_film.pop('imageUrl')
+    test_film['genre_id'] = test_film.pop('genreId')
+    test_film['rating'] = DataGenerator.generate_random_rating()
+    test_film['created_at'] = datetime.datetime.now()
+    return test_film
+
+
+@pytest.fixture(scope='function')
+def created_test_film(db_helper, test_db_film):
+    """
+    Фикстура, которая создает тестовый фильм в БД
+    Перед проверкой проверяется, что сгенерированный фильм уже
+    не существует в БД.
+    Удаляет его после завершения теста.
+    """
+    assert db_helper.get_movie_by_name(test_db_film['name']) is None, (
+        f'Сгенерированный фильм {test_db_film['name']} уже существует в БД'
+    )
+
+    movie = db_helper.create_test_movie(test_db_film)
+    yield movie
+
+    if db_helper.get_movie_by_id(movie.id):
+        db_helper.delete_movie(movie)

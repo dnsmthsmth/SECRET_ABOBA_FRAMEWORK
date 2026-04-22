@@ -5,3 +5,4 @@ __pycache__/
 .env
 .flake8
 allure-results
+ui_screenshots

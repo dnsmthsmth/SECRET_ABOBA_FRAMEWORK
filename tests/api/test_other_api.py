@@ -28,10 +28,10 @@ class TestAccountTransactionTemplate:
         with allure.step(
                 'Создание тестовых данных в базе данных: счета Stan и Bob'):
             stan = AccountTransactionTemplate(
-                user=f'Stan_{DataGenerator.generate_random_int(10)}',
+                user=f'Stan_{DataGenerator.generate_random_int(1000)}',
                 balance=1000)
             bob = AccountTransactionTemplate(
-                user=f'Bob_{DataGenerator.generate_random_int(10)}',
+                user=f'Bob_{DataGenerator.generate_random_int(1000)}',
                 balance=500)
             db_session.add_all([stan, bob])
             db_session.commit()

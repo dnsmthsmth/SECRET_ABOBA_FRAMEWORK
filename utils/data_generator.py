@@ -104,3 +104,11 @@ class DataGenerator:
     @staticmethod
     def generate_random_int(num: int) -> int:
         return random.randint(1, num)
+
+    @staticmethod
+    def generate_movie_rating() -> str:
+        return random.choice(['1', '2', '3', '4', '5'])
+
+    @staticmethod
+    def generate_movie_comment() -> str:
+        return f'UI test comment #{random.randint(1, 100000)}'

@@ -12,7 +12,7 @@ BASE_AUTH_URL = 'https://auth.dev-cinescope.coconutqa.ru/'
 BASE_URL = 'https://api.dev-cinescope.coconutqa.ru/'
 LOGIN_ENDPOINT = '/login'
 REGISTER_ENDPOINT = '/register'
-MOVIES_ENDPOINT = '/movies'
+MOVIES_ENDPOINT = 'movies'
 GENRES_ENDPOINT = '/genres'
 TEST_IMAGE_PLACEHOLDER = 'https://picsum.photos/200/300'
 

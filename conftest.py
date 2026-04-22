@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from api.api_manager import ApiManager
 from constants import (BASE_RESPONSE_MOVIE, BASE_URL, FILM_KEYS_MUTATIONS,
-                       GENRES_ENDPOINT, PATCH_VALUES, TEST_IMAGE_PLACEHOLDER,
-                       Roles)
+                       GENRES_ENDPOINT, MOVIES_ENDPOINT, PATCH_VALUES,
+                       TEST_IMAGE_PLACEHOLDER, Roles)
 from custom_requester.custom_requester import CustomRequester
 from db_requester.db_client import get_db_session
 from db_requester.db_helpers import DBHelper
@@ -115,6 +115,27 @@ def genre_ids(requester):
     for genre in response_data:
         genres_ids.append(genre['id'])
     return genres_ids
+
+
+@pytest.fixture(scope='session')
+def random_movie_id(requester):
+    """
+    Получение псевдослучайного id фильма.
+    Используется в ui тесте для выбора случайной странички фильма.
+    Выборка происходит только из первых 20 фильмов с GET-запроса.
+    """
+    response = requester.send_request(
+        method='GET',
+        endpoint=MOVIES_ENDPOINT,
+        params={'pageSize': 20},
+        need_logging=True,
+        expected_status=200
+    )
+    response_data = response.json()
+    movies_ids = []
+    for movie in response_data['movies']:
+        movies_ids.append(movie['id'])
+    return random.choice(movies_ids)
 
 
 @pytest.fixture(scope='function')
@@ -393,3 +414,17 @@ def created_test_film(db_helper, test_db_film):
 
     if db_helper.get_movie_by_id(movie.id):
         db_helper.delete_movie(movie)
+
+
+@pytest.fixture(scope='function')
+def comment_data():
+    """
+    Фикстура для генерации комментария и рейтинга.
+    Используется в ui-тесте.
+    """
+    comment_data = {
+        'comment_text': DataGenerator.generate_movie_comment(),
+        'comment_rating': DataGenerator.generate_movie_rating()
+    }
+
+    return comment_data
